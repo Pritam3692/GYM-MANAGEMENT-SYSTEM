@@ -1,0 +1,143 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const FitnessEmpireApp());
+}
+
+class FitnessEmpireApp extends StatelessWidget {
+  const FitnessEmpireApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'The Fitness Empire',
+      theme: ThemeData(
+        primaryColor: Colors.black,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+      ),
+      home: const LoginPage(),
+    );
+  }
+}
+
+/// ================= LOGIN PAGE =================
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  TextEditingController emailCtrl = TextEditingController();
+  TextEditingController passwordCtrl = TextEditingController();
+  bool isLoading = false;
+
+  void login() async {
+    if(emailCtrl.text.isEmpty || passwordCtrl.text.isEmpty) return;
+
+    setState(() => isLoading = true);
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: emailCtrl.text)
+        .where('password', isEqualTo: passwordCtrl.text)
+        .get();
+
+    if(snapshot.docs.isEmpty){
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid credentials")));
+      return;
+    }
+
+    final user = snapshot.docs.first.data();
+    final role = user['role'];
+    final memberId = user['memberId'];
+
+    setState(() => isLoading = false);
+
+    if(role == 'owner'){
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OwnerDashboard()));
+    } else {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MemberDashboard(memberId: memberId)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("The Fitness Empire - Login")),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: "Email")),
+            TextField(controller: passwordCtrl, decoration: const InputDecoration(labelText: "Password"), obscureText: true),
+            const SizedBox(height: 20),
+            isLoading ? const CircularProgressIndicator() :
+            ElevatedButton(onPressed: login, child: const Text("Login"), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ================= OWNER DASHBOARD =================
+class OwnerDashboard extends StatelessWidget {
+  const OwnerDashboard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Owner Dashboard"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: (){
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const PlanManagementPage()));
+            },
+          )
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.black,
+        child: const Icon(Icons.person_add),
+        onPressed: (){
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const AddMember()));
+        },
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('members').snapshots(),
+        builder: (context,snapshot){
+          if(!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final members = snapshot.data!.docs;
+
+          if(members.isEmpty) return const Center(child: Text("No members added"));
+
+          return ListView.builder(
+            itemCount: members.length,
+            itemBuilder: (context,index){
+              final m = members[index];
+              final expiry = (m['expiryDate'] as Timestamp).toDate();
+              final daysLeft = expiry.difference(DateTime.now()).inDays;
+
+              return Card(
+                margin: const EdgeInsets.all(8),
+                child: ListTile(
+                  title: Text(m['name']),
+                  subtitle: Text(
+                    daysLeft >= 0 ? "Active • $daysLeft days left" : "Expired",
+                    style: TextStyle(color: daysLeft>=0?Colors.green:Colors.red),
+                  ),
+                  trailing: Row(
+                    mainA...
